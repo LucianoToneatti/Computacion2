@@ -6,15 +6,17 @@ from multiprocessing import Process, Pipe, Queue
 import time
 import sys
 
+# Importar nuestros módulos
 from generador import proceso_generador
 from analizador import proceso_analizador
+from verificador import proceso_verificador
 
 def main():
     """
     Función principal que coordina todo el sistema
     """
     print("=== Sistema Concurrente de Análisis Biométrico ===")
-    print("Tarea 1: Generación y Análisis Concurrente")
+    print("Tarea 2: Verificación y Construcción de Bloques")
     print()
     
     """
@@ -40,6 +42,15 @@ def main():
         )
         
         """
+        Crear proceso verificador
+        """
+        proceso_verif = Process(
+            target=proceso_verificador,
+            args=(queue_resultados,),
+            name="Verificador"
+        )
+        
+        """
         Crear procesos analizadores
         """
         proceso_freq = Process(
@@ -62,54 +73,36 @@ def main():
         
         print("Iniciando procesos...")
         proceso_gen.start()
+        proceso_verif.start()  
         proceso_freq.start()
         proceso_pres.start()
         proceso_oxi.start()
         
-        print("Procesos iniciados. Monitoreando resultados...")
+        print("Procesos iniciados. El verificador construirá la blockchain...")
         print("(Presiona Ctrl+C para terminar anticipadamente)")
         print("-" * 60)
         
-        """
-        Monitorear resultados mientras los procesos trabajen 
-        """
-        resultados_recibidos = 0
-        total_esperado = 60 * 3  
-        
-        while resultados_recibidos < total_esperado:
-            try:
-            
-                resultado = queue_resultados.get(timeout=5)
-                resultados_recibidos += 1
-                
-                print(f"Resultado {resultados_recibidos}/{total_esperado}: "
-                      f"{resultado['tipo']} - {resultado['timestamp']} - "
-                      f"Media: {resultado['media']:.2f}, Desv: {resultado['desv']:.2f}")
-                
-            except:
-                
-                if not any([proceso_gen.is_alive(), proceso_freq.is_alive(), 
-                           proceso_pres.is_alive(), proceso_oxi.is_alive()]):
-                    print("Todos los procesos han terminado.")
-                    break
-        
-        print("-" * 60)
-        print("Esperando que terminen todos los procesos...")
+        proceso_gen.join(timeout=70)
         
         """
-        Esperar que terminen todos los procesos
+        Dar tiempo extra para que los analizadores terminen 
         """
-        proceso_gen.join(timeout=10)
         proceso_freq.join(timeout=10)
         proceso_pres.join(timeout=10)
         proceso_oxi.join(timeout=10)
         
-        print(f"Tarea 1 completada. Resultados procesados: {resultados_recibidos}")
+        """
+        Dar tiempo al verificador para procesar todos los resultados
+        """
+        proceso_verif.join(timeout=15)
         
     except KeyboardInterrupt:
         print("\nInterrupción del usuario. Terminando procesos...")
         
-        for proceso in [proceso_gen, proceso_freq, proceso_pres, proceso_oxi]:
+        """
+        Terminar procesos si siguen vivos 
+        """
+        for proceso in [proceso_gen, proceso_verif, proceso_freq, proceso_pres, proceso_oxi]:
             if proceso.is_alive():
                 proceso.terminate()
                 proceso.join(timeout=2)
@@ -131,7 +124,7 @@ def main():
         except:
             pass
         
-        print("Recursos liberados. Programa terminado.")
+        print("Tarea 2 completada. Revisa el archivo blockchain.json generado.")
 
 if __name__ == "__main__":
     main()
