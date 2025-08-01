@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="images/um_logo.png" alt="Universidad de Mendoza" />
+  <img width="225" height="225" alt="image" src="https://github.com/user-attachments/assets/e2a5739e-7b75-4c78-8c46-3bcec073af43" />
 </p>
 
 # Computación II - Ingeniería Informática  
@@ -11,12 +11,12 @@
 - **Correo Institucional:** l.toneatti@alumno.um.edu.ar
 
 ## Expectativas sobre la materia  
-Espero aprender a utilizar herramientas de control de versiones como Git, mejorar mis habilidades en programación y comprender mejor la administración de sistemas Unix/Linux.  
+Me gustaría familiarizarme con el uso de herramientas de control de versiones como Git, perfeccionar mis competencias en programación y adquirir una comprensión más sólida sobre la gestión de sistemas basados en Unix o Linux.
 
 ## Intereses en programación  
-- Desarrollo web (HTML, CSS, JavaScript, React)  
-- Programación de sistemas en C y Python  
-- Inteligencia Artificial y Machine Learning  
+- Creación de sitios web con tecnologías como HTML, CSS, JavaScript y frameworks como React
+- Desarrollo de software de sistemas utilizando lenguajes como C y Python
+- Exploración de la inteligencia artificial y aprendizaje automático
 
 ## Hobbies  
 - Aprender computación y programación por cuenta propia 
