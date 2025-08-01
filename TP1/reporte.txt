@@ -1,0 +1,19 @@
+REPORTE DE ANÁLISIS BIOMÉTRICO
+================================
+
+Fecha de generación: 2025-08-01 14:44:14
+Archivo analizado: blockchain.json
+
+ESTADÍSTICAS GENERALES:
+- Cantidad total de bloques: 60
+- Número de bloques con alertas: 0
+- Porcentaje de bloques con alertas: 0.00%
+
+PROMEDIOS GENERALES:
+- Frecuencia cardíaca promedio: 118.16 bpm
+- Presión arterial promedio: 143.26 mmHg
+- Oxígeno en sangre promedio: 94.86%
+
+INFORMACIÓN ADICIONAL:
+- Duración total del monitoreo: 60 segundos (1.00 minutos)
+- Integridad de la cadena: ✅ Verificada
