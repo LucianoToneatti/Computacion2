@@ -3,7 +3,7 @@ from aiohttp import web
 import asyncio
 import aiohttp
 from scraper.async_http import fetch_page
-from scraper.html_parser import parse_html_basic
+from scraper.html_parser import parse_html_full
 
 # Logging setup (to console and file)
 logger = logging.getLogger("server_a")
@@ -54,7 +54,7 @@ async def handle_scrape(request: web.Request) -> web.Response:
         return web.json_response({"error": "failed to fetch url"}, status=502)
 
     # Parsear el HTML y devolver el resultado del parser como JSON
-    parsed = parse_html_basic(content)
+    parsed = parse_html_full(content)
     return web.json_response(parsed)
 
 
