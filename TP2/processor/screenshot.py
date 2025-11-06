@@ -1,0 +1,1 @@
+"""Captura screenshots con Playwright"""

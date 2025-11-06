@@ -1,0 +1,1 @@
+"""Serialización/deserialización de mensajes"""
