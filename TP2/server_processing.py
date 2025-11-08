@@ -35,6 +35,29 @@ class EchoHandler(socketserver.BaseRequestHandler):
             logger.info(f"Conexión cerrada {addr}")
 
 
+class ProcessingTCPHandler(socketserver.BaseRequestHandler):
+    """Handler de procesamiento CPU-bound (placeholder)."""
+    def handle(self):
+        addr = self.client_address
+        logger.info(f"ProcessingTCPHandler: conexión entrante desde {addr}")
+        try:
+            while True:
+                data = self.request.recv(4096)
+                if not data:
+                    break
+                logger.info(f"ProcessingTCPHandler: recibido {len(data)} bytes de {addr}")
+                try:
+                    # Echo: devolver exactamente lo recibido
+                    self.request.sendall(data)
+                except Exception as e:
+                    logger.exception("Error enviando datos a %s: %s", addr, e)
+                    break
+        except Exception as e:
+            logger.exception("Error en ProcessingTCPHandler para %s: %s", addr, e)
+        finally:
+            logger.info(f"ProcessingTCPHandler: conexión cerrada {addr}")
+
+
 def run_server(host="0.0.0.0", port=9090):
     num_workers = multiprocessing.cpu_count()
     print(f"🚀 Servidor B (Multiprocessing) iniciando en {host}:{port}")
@@ -44,7 +67,7 @@ def run_server(host="0.0.0.0", port=9090):
     pool = multiprocessing.Pool(processes=num_workers)
 
     socketserver.ThreadingTCPServer.allow_reuse_address = True
-    server = socketserver.ThreadingTCPServer((host, port), EchoHandler)
+    server = socketserver.ThreadingTCPServer((host, port), ProcessingTCPHandler)
 
     try:
         server.serve_forever()
