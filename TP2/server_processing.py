@@ -1,6 +1,8 @@
 import logging
 import socketserver
 import multiprocessing
+import struct
+from common.serialization import deserialize_data, serialize_data
 
 # Logging setup (to console and file)
 logger = logging.getLogger("server_b")
@@ -18,7 +20,7 @@ if not logger.handlers:
 
 
 class EchoHandler(socketserver.BaseRequestHandler):
-    """Handler que hace echo de los datos recibidos."""
+    """Handler que hace echo de los datos recibidos. (No usado por defecto)"""
     def handle(self):
         addr = self.client_address
         logger.info(f"Conexión entrante desde {addr}")
@@ -36,22 +38,72 @@ class EchoHandler(socketserver.BaseRequestHandler):
 
 
 class ProcessingTCPHandler(socketserver.BaseRequestHandler):
-    """Handler de procesamiento CPU-bound (placeholder)."""
+    """
+    Handler que recibe un mensaje (header+payload), lo deserializa,
+    y envía una respuesta mock.
+    """
+
+    def _read_exact(self, n: int) -> bytes:
+        """Lee exactamente n bytes del socket o lanza ConnectionError si se cierra."""
+        buf = bytearray()
+        while len(buf) < n:
+            chunk = self.request.recv(n - len(buf))
+            if not chunk:
+                raise ConnectionError("socket closed while reading")
+            buf.extend(chunk)
+        return bytes(buf)
+
+    def _receive_message(self) -> bytes:
+        """
+        Lee un mensaje completo (header+payload) y devuelve el payload.
+        Lanza ConnectionError o struct.error si falla.
+        """
+        # Leer header de 4 bytes
+        header = self._read_exact(4)
+        length = struct.unpack("!I", header)[0]
+        logger.info("ProcessingTCPHandler: esperando %d bytes de payload...", length)
+
+        # Leer payload completo
+        payload = self._read_exact(length)
+        return payload
+
+    def _send_response(self, data: dict):
+        """Serializa, empaqueta y envía una respuesta dict al cliente."""
+        try:
+            payload = serialize_data(data)
+            header = struct.pack("!I", len(payload))
+            self.request.sendall(header + payload)
+        except Exception as e:
+            logger.exception("ProcessingTCPHandler: fallo enviando respuesta a %s: %s", self.client_address, e)
+
     def handle(self):
+        """Coordina la recepción, procesamiento y respuesta."""
         addr = self.client_address
         logger.info(f"ProcessingTCPHandler: conexión entrante desde {addr}")
+
         try:
-            while True:
-                data = self.request.recv(4096)
-                if not data:
-                    break
-                logger.info(f"ProcessingTCPHandler: recibido {len(data)} bytes de {addr}")
-                try:
-                    # Echo: devolver exactamente lo recibido
-                    self.request.sendall(data)
-                except Exception as e:
-                    logger.exception("Error enviando datos a %s: %s", addr, e)
-                    break
+            # --- 1. Recibir Mensaje ---
+            payload = self._receive_message()
+
+            # --- 2. Deserializar ---
+            try:
+                obj = deserialize_data(payload)
+                logger.info("ProcessingTCPHandler: deserializado: %s", obj)
+            except Exception as e:
+                logger.exception("ProcessingTCPHandler: error deserializando payload: %s", e)
+                # Enviar respuesta de error y terminar
+                err_resp = {"status": "error", "message": "invalid payload"}
+                self._send_response(err_resp)
+                return
+
+            # --- 3. Procesar (Mock) y Enviar Respuesta ---
+            # Aquí irá la lógica de CPU-bound (screenshots, etc.)
+            response = {"status": "ok", "message": "recibido correctamente"}
+            self._send_response(response)
+            logger.info("ProcessingTCPHandler: respuesta enviada a %s", addr)
+
+        except ConnectionError as ce:
+            logger.warning("ProcessingTCPHandler: conexión cerrada prematuramente por %s: %s", addr, ce)
         except Exception as e:
             logger.exception("Error en ProcessingTCPHandler para %s: %s", addr, e)
         finally:
