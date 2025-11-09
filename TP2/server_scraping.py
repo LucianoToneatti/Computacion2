@@ -57,8 +57,8 @@ async def handle_scrape(request: web.Request) -> web.Response:
         logger.warning("handle_scrape: fallo al obtener el contenido de %s", url)
         return web.json_response({"error": "failed to fetch url"}, status=502)
 
-    # Parsear el HTML
-    parsed = parse_html_full(content)
+    # Parsear el HTML (usar base_url para resolver relativos)
+    parsed = parse_html_full(content, url)
 
     # Enviar resultado al servidor de procesamiento B y combinar respuestas
     processing_result = {}

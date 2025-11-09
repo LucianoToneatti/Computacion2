@@ -4,6 +4,8 @@ import multiprocessing
 import struct
 from common.serialization import deserialize_data, serialize_data
 from processor.screenshot import take_screenshot
+from processor.performance import analyze_performance
+from processor.image_processor import generate_thumbnails
 
 # Logging setup (to console and file)
 logger = logging.getLogger("server_b")
@@ -97,23 +99,44 @@ class ProcessingTCPHandler(socketserver.BaseRequestHandler):
                 self._send_response(err_resp)
                 return
 
-            # --- 3. Procesar (usar pool para tarea CPU-bound: screenshot) ---
+            # --- 3. Procesar (usar pool para tarea CPU-bound: screenshot, performance, thumbnails) ---
             # Obtener el pool desde el servidor (puede ser None)
             pool = getattr(self.server, "pool", None)
             screenshot_b64 = ""
+            performance_res = {}
+            thumbnails_res = []
+
             try:
-                url = obj.get("url") if isinstance(obj, dict) else None
+                # El payload puede venir como {"type": "...", "url": "...", "scrape": {...}}
+                url = None
+                image_urls = []
+                if isinstance(obj, dict):
+                    url = obj.get("url") or (obj.get("scrape") or {}).get("url")
+                    # extraer image_urls desde obj['scrape'] si está presente
+                    scrape_block = obj.get("scrape") or {}
+                    image_urls = scrape_block.get("image_urls") or []
+
                 if not url:
                     raise ValueError("missing 'url' in payload")
 
                 if pool:
-                    # pool.apply es síncrono y bloqueará el thread handler hasta completar
+                    # Ejecutar tareas CPU-bound en el pool (bloqueante desde el thread handler)
                     screenshot_b64 = pool.apply(take_screenshot, args=(url,))
+                    performance_res = pool.apply(analyze_performance, args=(url,))
+                    # generate_thumbnails espera una lista de URLs
+                    thumbnails_res = pool.apply(generate_thumbnails, args=(image_urls,))
                 else:
-                    # fallback sin pool
+                    # fallback síncrono
                     screenshot_b64 = take_screenshot(url)
+                    performance_res = analyze_performance(url)
+                    thumbnails_res = generate_thumbnails(image_urls)
 
-                response = {"status": "ok", "screenshot": screenshot_b64}
+                response = {
+                    "status": "ok",
+                    "screenshot": screenshot_b64,
+                    "performance": performance_res,
+                    "thumbnails": thumbnails_res,
+                }
             except Exception as e:
                 logger.exception("ProcessingTCPHandler: error en procesamiento: %s", e)
                 response = {"status": "error", "message": "processing_failed", "detail": str(e)}
