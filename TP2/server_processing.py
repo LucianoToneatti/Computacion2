@@ -3,6 +3,7 @@ import socketserver
 import multiprocessing
 import struct
 from common.serialization import deserialize_data, serialize_data
+from processor.screenshot import take_screenshot
 
 # Logging setup (to console and file)
 logger = logging.getLogger("server_b")
@@ -96,9 +97,27 @@ class ProcessingTCPHandler(socketserver.BaseRequestHandler):
                 self._send_response(err_resp)
                 return
 
-            # --- 3. Procesar (Mock) y Enviar Respuesta ---
-            # Aquí irá la lógica de CPU-bound (screenshots, etc.)
-            response = {"status": "ok", "message": "recibido correctamente"}
+            # --- 3. Procesar (usar pool para tarea CPU-bound: screenshot) ---
+            # Obtener el pool desde el servidor (puede ser None)
+            pool = getattr(self.server, "pool", None)
+            screenshot_b64 = ""
+            try:
+                url = obj.get("url") if isinstance(obj, dict) else None
+                if not url:
+                    raise ValueError("missing 'url' in payload")
+
+                if pool:
+                    # pool.apply es síncrono y bloqueará el thread handler hasta completar
+                    screenshot_b64 = pool.apply(take_screenshot, args=(url,))
+                else:
+                    # fallback sin pool
+                    screenshot_b64 = take_screenshot(url)
+
+                response = {"status": "ok", "screenshot": screenshot_b64}
+            except Exception as e:
+                logger.exception("ProcessingTCPHandler: error en procesamiento: %s", e)
+                response = {"status": "error", "message": "processing_failed", "detail": str(e)}
+
             self._send_response(response)
             logger.info("ProcessingTCPHandler: respuesta enviada a %s", addr)
 
@@ -110,16 +129,23 @@ class ProcessingTCPHandler(socketserver.BaseRequestHandler):
             logger.info(f"ProcessingTCPHandler: conexión cerrada {addr}")
 
 
+class PooledTCPServer(socketserver.ThreadingTCPServer):
+    """ThreadingTCPServer que conserva un pool de procesos en self.pool."""
+    def __init__(self, server_address, RequestHandlerClass, bind_and_activate=True, pool=None):
+        super().__init__(server_address, RequestHandlerClass, bind_and_activate=bind_and_activate)
+        self.pool = pool
+
+
 def run_server(host="0.0.0.0", port=9090):
     num_workers = multiprocessing.cpu_count()
     print(f"🚀 Servidor B (Multiprocessing) iniciando en {host}:{port}")
     logger.info(f"Servidor B (Multiprocessing) iniciando en {host}:{port} - CPU workers disponibles: {num_workers}")
 
-    # Crear un pool para demostrar uso de multiprocessing (no usado directamente aquí)
+    # Crear un pool para demostrar uso de multiprocessing (usado por PooledTCPServer)
     pool = multiprocessing.Pool(processes=num_workers)
 
     socketserver.ThreadingTCPServer.allow_reuse_address = True
-    server = socketserver.ThreadingTCPServer((host, port), ProcessingTCPHandler)
+    server = PooledTCPServer((host, port), ProcessingTCPHandler, pool=pool)
 
     try:
         server.serve_forever()
