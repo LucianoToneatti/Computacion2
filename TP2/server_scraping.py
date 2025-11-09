@@ -2,8 +2,11 @@ import logging
 from aiohttp import web
 import asyncio
 import aiohttp
+import struct
 from scraper.async_http import fetch_page
 from scraper.html_parser import parse_html_full
+from common.protocol import pack_message
+from common.serialization import deserialize_data
 
 # Logging setup (to console and file)
 logger = logging.getLogger("server_a")
@@ -30,7 +33,8 @@ async def handle_scrape(request: web.Request) -> web.Response:
     """
     GET /scrape?url=<...>
     Lee el parámetro 'url' de la query string, usa app['http_session'] para obtener la página,
-    parsea el HTML con parse_html_basic y devuelve el diccionario resultante como JSON.
+    parsea el HTML con parse_html_full y devuelve el diccionario resultante como JSON.
+    Además envía el resultado al servidor de procesamiento B y combina ambas respuestas.
     """
     url = request.query.get("url")
     if not url:
@@ -53,9 +57,62 @@ async def handle_scrape(request: web.Request) -> web.Response:
         logger.warning("handle_scrape: fallo al obtener el contenido de %s", url)
         return web.json_response({"error": "failed to fetch url"}, status=502)
 
-    # Parsear el HTML y devolver el resultado del parser como JSON
+    # Parsear el HTML
     parsed = parse_html_full(content)
-    return web.json_response(parsed)
+
+    # Enviar resultado al servidor de procesamiento B y combinar respuestas
+    processing_result = {}
+    try:
+        payload = {"type": "scrape_result", "url": url, "scrape": parsed}
+        processing_result = await call_processing_server(payload)
+    except Exception as e:
+        logger.exception("handle_scrape: fallo al llamar a server B: %s", e)
+        processing_result = {"error": "processing_call_failed", "detail": str(e)}
+
+    combined = {"scrape": parsed, "processing": processing_result}
+    return web.json_response(combined)
+
+
+async def call_processing_server(data_to_send: dict, host: str = "127.0.0.1", port: int = 9090) -> dict:
+    """
+    Conecta por TCP al servidor de procesamiento (host:port), empaqueta y envía
+    data_to_send usando pack_message, lee la respuesta (header+payload),
+    deserializa y devuelve el dict resultante.
+
+    Asegura el cierre del writer en finally.
+    """
+    logger.info("call_processing_server: conectando a %s:%d", host, port)
+    try:
+        reader, writer = await asyncio.open_connection(host, port)
+    except Exception as e:
+        logger.exception("call_processing_server: error al conectar a %s:%d -> %s", host, port, e)
+        return {"error": "connect_failed", "detail": str(e)}
+
+    try:
+        # Empaquetar y enviar
+        msg = pack_message(data_to_send)
+        writer.write(msg)
+        await writer.drain()
+
+        # Leer header (4 bytes) y payload exacto
+        header = await reader.readexactly(4)
+        length = struct.unpack("!I", header)[0]
+        logger.info("call_processing_server: esperando %d bytes de respuesta", length)
+        payload = await reader.readexactly(length)
+
+        # Deserializar respuesta
+        try:
+            resp_obj = deserialize_data(payload)
+            return resp_obj
+        except Exception as e:
+            logger.exception("call_processing_server: error deserializando respuesta: %s", e)
+            return {"error": "invalid_response", "detail": str(e)}
+    finally:
+        try:
+            writer.close()
+            await writer.wait_closed()
+        except Exception:
+            pass
 
 
 async def on_startup(app: web.Application) -> None:
