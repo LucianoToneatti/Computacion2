@@ -3,10 +3,12 @@ from aiohttp import web
 import asyncio
 import aiohttp
 import struct
+import argparse
 from scraper.async_http import fetch_page
 from scraper.html_parser import parse_html_full
 from common.protocol import pack_message
 from common.serialization import deserialize_data
+import datetime
 
 # Logging setup (to console and file)
 logger = logging.getLogger("server_a")
@@ -69,8 +71,15 @@ async def handle_scrape(request: web.Request) -> web.Response:
         logger.exception("handle_scrape: fallo al llamar a server B: %s", e)
         processing_result = {"error": "processing_call_failed", "detail": str(e)}
 
-    combined = {"scrape": parsed, "processing": processing_result}
-    return web.json_response(combined)
+    # Formato de respuesta requerido
+    resp = {
+        "url": url,
+        "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+        "status": "success",
+        "scraping_data": parsed,
+        "processing_data": processing_result,
+    }
+    return web.json_response(resp)
 
 
 async def call_processing_server(data_to_send: dict, host: str = "127.0.0.1", port: int = 9090) -> dict:
@@ -137,25 +146,30 @@ def create_app() -> web.Application:
     return app
 
 
-async def _run_app() -> None:
+async def _run_app(host: str = "::", port: int = 8080) -> None:
     app = create_app()
     runner = web.AppRunner(app)
     await runner.setup()
 
-    # Intentamos enlazar en IPv4 e IPv6; IPv6 puede fallar en algunos entornos.
-    site4 = web.TCPSite(runner, "0.0.0.0", 8080)
-    site6 = web.TCPSite(runner, "::", 8080)
+    # Crear TCPSite usando los parámetros host/port recibidos
+    site = web.TCPSite(runner, host, port)
 
-    await site4.start()
     try:
-        await site6.start()
-        logger.info("Servidor A escuchando en IPv4 y IPv6 en el puerto 8080")
+        await site.start()
+        logger.info("Servidor A escuchando en %s:%d", host, port)
+        print(f"🚀 Servidor A (Asyncio) iniciando en http://{host}:{port}")
     except Exception as e:
-        # Si falla el bind IPv6, seguimos con IPv4
-        logger.warning(f"No se pudo enlazar IPv6 (::) - continuando solo con IPv4: {e}")
-
-    print("🚀 Servidor A (Asyncio) iniciando en http://0.0.0.0:8080")
-    logger.info("Servidor A (Asyncio) iniciando en http://0.0.0.0:8080")
+        logger.exception("No se pudo iniciar TCPSite en %s:%d -> %s", host, port, e)
+        # Si el host es '::' intentamos enlazar también en 0.0.0.0 por compatibilidad
+        if host == "::":
+            try:
+                site4 = web.TCPSite(runner, "0.0.0.0", port)
+                await site4.start()
+                logger.info("Servidor A escuchando en 0.0.0.0:%d como fallback", port)
+                print(f"🚀 Servidor A (Asyncio) iniciando en http://0.0.0.0:{port}")
+            except Exception as e2:
+                logger.exception("Fallback IPv4 falló: %s", e2)
+                raise
 
     # Mantener el servidor en ejecución hasta interrupción
     try:
@@ -165,4 +179,12 @@ async def _run_app() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(_run_app())
+    parser = argparse.ArgumentParser(description="Servidor A - scraping async")
+    parser.add_argument("-i", "--host", default="::", help="host a bindear (default '::')")
+    parser.add_argument("-p", "--port", type=int, default=8080, help="puerto (default 8080)")
+    args = parser.parse_args()
+
+    try:
+        asyncio.run(_run_app(args.host, args.port))
+    except Exception as e:
+        logger.exception("Error arrancando la app: %s", e)

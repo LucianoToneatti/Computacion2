@@ -6,6 +6,7 @@ from common.serialization import deserialize_data, serialize_data
 from processor.screenshot import take_screenshot
 from processor.performance import analyze_performance
 from processor.image_processor import generate_thumbnails
+import argparse
 
 # Logging setup (to console and file)
 logger = logging.getLogger("server_b")
@@ -159,12 +160,12 @@ class PooledTCPServer(socketserver.ThreadingTCPServer):
         self.pool = pool
 
 
-def run_server(host="0.0.0.0", port=9090):
-    num_workers = multiprocessing.cpu_count()
-    print(f"🚀 Servidor B (Multiprocessing) iniciando en {host}:{port}")
+def run_server(host: str = "0.0.0.0", port: int = 9090, workers: int | None = None):
+    num_workers = workers or multiprocessing.cpu_count()
+    print(f"🚀 Servidor B (Multiprocessing) iniciando en {host}:{port} (workers={num_workers})")
     logger.info(f"Servidor B (Multiprocessing) iniciando en {host}:{port} - CPU workers disponibles: {num_workers}")
 
-    # Crear un pool para demostrar uso de multiprocessing (usado por PooledTCPServer)
+    # Crear un pool para las tareas CPU-bound (usado por PooledTCPServer)
     pool = multiprocessing.Pool(processes=num_workers)
 
     socketserver.ThreadingTCPServer.allow_reuse_address = True
@@ -183,4 +184,15 @@ def run_server(host="0.0.0.0", port=9090):
 
 
 if __name__ == "__main__":
-    run_server()
+    parser = argparse.ArgumentParser(description="Servidor B - procesamiento")
+    parser.add_argument("-i", "--host", default="0.0.0.0", help="host a bindear (default 0.0.0.0)")
+    parser.add_argument("-p", "--port", type=int, default=9090, help="puerto (default 9090)")
+    parser.add_argument(
+        "-n",
+        "--workers",
+        type=int,
+        default=multiprocessing.cpu_count(),
+        help="numero de procesos worker para el pool (default: cpu_count())",
+    )
+    args = parser.parse_args()
+    run_server(args.host, args.port, args.workers)
