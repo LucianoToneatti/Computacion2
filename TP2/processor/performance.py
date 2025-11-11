@@ -10,8 +10,11 @@ logger = logging.getLogger("processor.performance")
 
 def analyze_performance(url: str, timeout: int = 30000) -> Dict[str, int]:
     """
-    Usa Playwright (sync) para navegar a `url`, extraer window.performance.timing
-    y devolver un diccionario con los valores (enteros) y algunas métricas derivadas.
+    Usa Playwright (sync) para navegar a `url`, extraer métricas de rendimiento y
+    entradas de recursos. Devuelve un diccionario con:
+      - load_time_ms: tiempo total de carga (loadEventEnd - navigationStart)
+      - total_size_kb: suma de tamaños de recursos en KB (aprox)
+      - num_requests: número de recursos cargados
     En caso de error devuelve dict vacío y registra la excepción.
     """
     try:
@@ -21,36 +24,60 @@ def analyze_performance(url: str, timeout: int = 30000) -> Dict[str, int]:
             page.goto(url, timeout=timeout)
             page.wait_for_load_state("load", timeout=timeout)
 
-            # Extraer objeto performance.timing como un POJO
-            perf = page.evaluate(
+            # Extraer performance.timing para calcular load time
+            perf_timing = page.evaluate(
                 """() => {
                     const t = window.performance.timing || {};
-                    const out = {};
-                    for (const k in t) {
-                        try { out[k] = t[k]; } catch (e) { out[k] = null; }
-                    }
-                    return out;
+                    return {
+                        navigationStart: t.navigationStart || 0,
+                        loadEventEnd: t.loadEventEnd || 0,
+                        domContentLoadedEventEnd: t.domContentLoadedEventEnd || 0
+                    };
                 }"""
             )
+
+            # Extraer entradas de recursos (transferSize / encodedBodySize)
+            resources = page.evaluate(
+                """() => {
+                    try {
+                        return performance.getEntriesByType('resource').map(e => ({
+                            transferSize: e.transferSize || 0,
+                            encodedBodySize: e.encodedBodySize || 0
+                        }));
+                    } catch (e) {
+                        return [];
+                    }
+                }"""
+            )
+
             browser.close()
 
-        # Normalizar a enteros cuando sea posible y calcular métricas simples
-        result: Dict[str, int] = {}
-        for k, v in (perf or {}).items():
-            try:
-                result[k] = int(v) if v is not None else None
-            except Exception:
-                result[k] = None
+        # Calcular load_time_ms
+        nav = int(perf_timing.get("navigationStart") or 0)
+        load = int(perf_timing.get("loadEventEnd") or 0)
+        load_time_ms = (load - nav) if (load >= nav and nav > 0) else 0
 
-        nav = result.get("navigationStart")
-        load = result.get("loadEventEnd")
-        dom = result.get("domContentLoadedEventEnd")
-        if isinstance(nav, int) and isinstance(load, int) and load >= nav:
-            result["total_load_time_ms"] = load - nav
-        if isinstance(nav, int) and isinstance(dom, int) and dom >= nav:
-            result["dom_content_loaded_ms"] = dom - nav
+        # Calcular num_requests y total_size_kb
+        num_requests = 0
+        total_bytes = 0
+        if isinstance(resources, list):
+            num_requests = len(resources)
+            for r in resources:
+                try:
+                    ts = int(r.get("transferSize", 0) or 0)
+                except Exception:
+                    ts = 0
+                try:
+                    eb = int(r.get("encodedBodySize", 0) or 0)
+                except Exception:
+                    eb = 0
+                # Preferir transferSize si está disponible (>0), sino encodedBodySize
+                chosen = ts if ts > 0 else eb
+                total_bytes += chosen
 
-        return result
+        total_size_kb = round(total_bytes / 1024.0, 2)
+
+        return {"load_time_ms": load_time_ms, "total_size_kb": total_size_kb, "num_requests": num_requests}
     except Exception as e:
         logger.exception("analyze_performance: fallo al obtener métricas de %s: %s", url, e)
         return {}

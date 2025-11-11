@@ -60,24 +60,26 @@ async def handle_scrape(request: web.Request) -> web.Response:
         return web.json_response({"error": "failed to fetch url"}, status=502)
 
     # Parsear el HTML (usar base_url para resolver relativos)
-    parsed = parse_html_full(content, url)
+    # NOTA: Esta es la clave "scraping_data" del JSON final
+    scraping_data = parse_html_full(content, url)
 
     # Enviar resultado al servidor de procesamiento B y combinar respuestas
-    processing_result = {}
+    processing_data = {}
     try:
-        payload = {"type": "scrape_result", "url": url, "scrape": parsed}
-        processing_result = await call_processing_server(payload)
+        # El payload para el Servidor B incluye los datos de scraping (ej. image_urls)
+        payload = {"type": "scrape_result", "url": url, "scraping_data": scraping_data}
+        processing_data = await call_processing_server(payload)
     except Exception as e:
         logger.exception("handle_scrape: fallo al llamar a server B: %s", e)
-        processing_result = {"error": "processing_call_failed", "detail": str(e)}
+        processing_data = {"error": "processing_call_failed", "detail": str(e)}
 
-    # Formato de respuesta requerido
+    # Formato de respuesta final según la consigna (Prompt 11)
     resp = {
         "url": url,
-        "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
-        "status": "success",
-        "scraping_data": parsed,
-        "processing_data": processing_result,
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "status": "success" if "error" not in processing_data else "partial_success",
+        "scraping_data": scraping_data,
+        "processing_data": processing_data,
     }
     return web.json_response(resp)
 
@@ -179,10 +181,38 @@ async def _run_app(host: str = "::", port: int = 8080) -> None:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Servidor A - scraping async")
-    parser.add_argument("-i", "--host", default="::", help="host a bindear (default '::')")
-    parser.add_argument("-p", "--port", type=int, default=8080, help="puerto (default 8080)")
+    # --- BLOQUE CORREGIDO (PROMPT 11) ---
+    parser = argparse.ArgumentParser(
+        description="Servidor de Scraping Web Asíncrono",
+        formatter_class=argparse.RawTextHelpFormatter # Para que el help text se vea bien
+    )
+    
+    parser.add_argument(
+        "-i", "--ip", 
+        dest="host",  # Guardar en args.host
+        default="::", 
+        help="Dirección de escucha (soporta IPv4/IPv6)"
+    )
+    
+    parser.add_argument(
+        "-p", "--port", 
+        type=int, 
+        default=8080, 
+        help="Puerto de escucha"
+    )
+    
+    parser.add_argument(
+        "-w", "--workers", 
+        type=int, 
+        default=4, 
+        help="Número de workers (default: 4)\n(Nota: este script usa un solo proceso asyncio,\neste argumento es para cumplir la consigna)"
+    )
+    
     args = parser.parse_args()
+    
+    # args.workers no se usa aquí, ya que asyncio maneja la concurrencia
+    # en un solo proceso. Lo hemos añadido para cumplir la interfaz.
+    logger.info(f"Configuración: host={args.host}, port={args.port}, workers={args.workers} (ignorado)")
 
     try:
         asyncio.run(_run_app(args.host, args.port))

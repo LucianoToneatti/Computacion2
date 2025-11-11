@@ -13,10 +13,10 @@ def extract_metadata(soup: BeautifulSoup) -> Dict[str, Optional[object]]:
     Devuelve un diccionario con las claves:
       - description: contenido de <meta name="description"> o None
       - keywords: contenido de <meta name="keywords"> o None
-      - og: diccionario con las propiedades Open Graph (por ejemplo "og:title": "..." stored as "title": "...")
+      - og:* : cada propiedad Open Graph se añade como clave plana prefijada con "og:"
     """
     try:
-        result: Dict[str, Optional[object]] = {"description": None, "keywords": None, "og": {}}
+        result: Dict[str, Optional[object]] = {"description": None, "keywords": None}
 
         # description
         meta_desc = soup.find("meta", attrs={"name": "description"})
@@ -28,7 +28,7 @@ def extract_metadata(soup: BeautifulSoup) -> Dict[str, Optional[object]]:
         if meta_kw and meta_kw.get("content"):
             result["keywords"] = meta_kw.get("content").strip()
 
-        # Open Graph (og:*)
+        # Open Graph (og:*) -> aplanar en claves "og:<prop>"
         og_dict: Dict[str, str] = {}
         for meta in soup.find_all("meta"):
             prop = meta.get("property") or meta.get("name")
@@ -41,8 +41,11 @@ def extract_metadata(soup: BeautifulSoup) -> Dict[str, Optional[object]]:
                 if content:
                     og_dict[key] = content.strip()
 
-        result["og"] = og_dict
+        # Fusionar OG en el diccionario principal con prefijo "og:"
+        for k, v in og_dict.items():
+            result[f"og:{k}"] = v
+
         return result
     except Exception as e:
         logger.exception("Error al extraer metadata: %s", e)
-        return {"description": None, "keywords": None, "og": {}}
+        return {"description": None, "keywords": None}
