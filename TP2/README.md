@@ -11,26 +11,26 @@ Servidor B (Multiprocessing): servidor TCP para tareas CPU-bound y procesamiento
 Setup
 
 Crear entorno virtual:
-
+```
 python3 -m venv .venv
-
+```
 
 Activar el entorno:
-
+```
 source .venv/bin/activate
-
+```
 
 (En Windows: .venv\Scripts\activate)
 
 Instalar dependencias de Python:
-
+```
 pip install -r requirements.txt
-
+```
 
 Instalar los navegadores para Playwright:
-
+```
 playwright install
-
+```
 
 # Ejecución
 
@@ -39,11 +39,13 @@ Se deben ejecutar los dos servidores en terminales separadas. Se recomienda arra
 ## Terminal 1 — Servidor B (Procesamiento)
 
 ### Iniciar con valores por defecto (Puerto 9090, Workers = CPUs)
+```
 python3 server_processing.py
-
+```
 Iniciar con argumentos específicos:
+```
 python3 server_processing.py -p 9090 -n 4
-
+```
 
 Verás: 🚀 Servidor B (Multiprocessing) iniciando en 0.0.0.0:9090 (workers=4)
 
@@ -51,8 +53,9 @@ Verás: 🚀 Servidor B (Multiprocessing) iniciando en 0.0.0.0:9090 (workers=4)
 
 ### Iniciar con valores por defecto (Puerto 8080, Host '::')
 ### NOTA: Se recomienda usar -i 127.0.0.1 para evitar problemas IPv4/IPv6
+```
 python3 server_scraping.py -i 127.0.0.1 -p 8080
-
+```
 
 Verás: 🚀 Servidor A (Asyncio) iniciando en http://127.0.0.1:8080
 
@@ -61,6 +64,10 @@ Testing
 Hay dos formas de probar el sistema:
 
 1. Pruebas Unitarias (Pytest)
+
+```
+pytest
+```
 
 Este comando prueba la lógica interna del scraper (ej. el parseo de HTML) sin necesidad de levantar los servidores.
 
@@ -93,13 +100,14 @@ Tras unos segundos, verás el JSON completo con los datos de scraping_data y pro
 Health Check (Opcional)
 
 Puedes usar curl para verificar rápidamente si el Servidor A está vivo:
-
+```
 curl http://127.0.0.1:8080/health
+```
 # Respuesta: {"status": "ok", "server": "A - Asyncio"}
 
 
 Estructura del Proyecto
-
+```
 TP2
 ├── server_scraping.py
 ├── server_processing.py
@@ -125,3 +133,4 @@ TP2
 ├── requirements.txt
 ├── README.md
 └── .gitignore
+```
